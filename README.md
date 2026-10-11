@@ -67,3 +67,7 @@ All AI and destination integrations default to offline fake or simulated modes, 
 ## Status and honest limits
 
 The full workflow is implemented and tested locally against provider fakes. Not yet verified: publishing against real provider accounts, production deployment, backup/restore exercises, and PWA installability. Facebook Group posting is intentionally manual. The [case study](docs/CASE_STUDY.md) lists the known open issues.
+
+## License
+
+Copyright © 2026 Michael Perry. All rights reserved. This code is shared for portfolio review only and may not be copied, modified, or reused without written permission. See [LICENSE](LICENSE).
