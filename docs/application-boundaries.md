@@ -1,0 +1,31 @@
+# Application responsibility boundaries
+
+WP0B proposal with WP0C boundary corrections. The operator should review whether a campaign is right; internal execution machinery should be expressed as simple progress/outcomes and finished manual actions. One application and database serve one organization. No frontend state, source sentence or AI result is business authorization.
+
+| Component | Owns | Must not own |
+| --- | --- | --- |
+| Frontend | Intake/source upload UI, concise fact confirmation, clarification, actual copy/asset preview, conversational revision request, explicit approval control, destination/manual-action status/history. Sends expected revisions/hash for protected commands. | Secrets, fact/approval authority, trusted lifecycle state, direct AI/publisher calls, implicit approval from chat, automatic retries on page refresh. |
+| Backend | Auth/session/authorization, file validation, fact acceptance, JSON validation, state transitions, version assembly/hash, approval/dispatch guards, persistence, connector calls, reconciliation, audit and safe errors. | Marketing decisions invented after approval; treating an HTTP send as success. |
+| Database | Authoritative relational state, unique identities, locking/revision checks, append-only approved/version records, transactionally consistent audit. | Byte-heavy public uploads, executing model instructions, platform credentials in ordinary JSON fields. |
+| AI services | Proposed extraction, ambiguity recognition, wording/prioritization of code-detected clarifications, copy/revision/creative briefs/ranking with bounded structured output. | Approval, target permissions, direct protected writes, unconstrained tools, deciding successful execution/retry safety. |
+| Image generation/composition | Preapproval creative artifacts; composition of exact approved logos/logistics, safe file validation and immutable hashes. | Altering approved graphics, inferring official brand authority, generating substitute logos, public assets from confidential sources without review. |
+| Connectors | Capability declaration, preapproval validation/rendering, mechanical transport, evidence collection and manual package delivery for one target. | New copy/crop/audience/route decisions after approval, selecting a different version, blanket sibling retries, live behavior while in simulation. |
+| File storage | Private original bytes and immutable asset objects; authorized retrieval, content hash verification, temporary derivative lifecycle. | Public directory/bucket enumeration or executing stored content. |
+
+## Trust and operation boundaries
+
+Browser → authenticated same-origin backend → domain service/transaction → database/private storage. Model/provider call returns untrusted candidate/evidence through backend validation. Only domain service can accept facts, approve or change execution status. There is no general endpoint to assign arbitrary state or patch version JSON.
+
+Operation families are intake/upload, accept fact proposals, request clarification/revision/generation, read preview/history, approve exact snapshot, separately start/resume execution of that approval, retry one target, reconcile one target, acknowledge manual completion, accept finished manual handoff, close known failed/blocked disposition, explicitly abandon uncertain action with risk acknowledgement, abandon campaign. This is conceptual command vocabulary, not implemented routes/contracts. Responses carry revision, operation id and safe current status. The frontend may poll bounded operation status; connection loss never means backend rollback or repeat publish. Persistent database state remains authoritative after browser reload/process restart.
+
+AI secrets, identity client secret, future platform tokens and file-storage credentials stay server-side. Model receives minimum relevant data, never app secrets/permissions. Browser can receive business source content only after authorization and never receives operational credentials. Provider responses/logs are redacted before display. Copy uses plain text/sanitized formatting; content cannot introduce executable UI.
+
+## Long operations without distributed infrastructure
+
+Phase 1 fake generation/publishing are bounded and can complete in ordinary requests. Preserve operation/attempt token and lease before any operation, so the same interface also works for later bounded in-process supervised tasks with status polling. A process restart marks stale generation failed/stale and possible dispatched work UNKNOWN; it does not blindly replay. No worker service, Redis, queue, event bus or distributed scheduling is justified now. If measured later workload needs durable task throughput beyond this approach, Architect reviews that separately. One active generation per campaign and one publish attempt per execution remain database-enforced.
+
+## PWA and UI behavior
+
+Responsive React app, accessible keyboard/touch controls and install manifest. Service worker caches only versioned static shell assets, never authenticated API responses, original uploads, private previews, approvals or queued mutation requests. No offline approval/publish or optimistic success message. Offline shows connectivity state and preserves only consciously entered unsent text in memory; no sensitive persistent browser store by default. Reauthentication preserves in-memory draft; persisted backend draft is restored after login. No secrets/tokens in localStorage.
+
+Campaign changes are presented conversationally but protected actions remain explicit. Show one review with accurate facts, actual graphics, destination/account selections and human groups. After approval, show durable approval separately from distribution startup; a failed start can resume without reapproval. The backend applies material dependency checks rather than a blanket Event-revision mismatch. Show known per-target validation/readiness before approval and explicit excluded targets. After execution starts, show independent results with “simulated” labels in Phase 1; technical diagnostics behind detail view. Manual Groups display copy/download/target/completion checklist. Internal leases, adapter flags and UUIDs are not required UI work for the operator.

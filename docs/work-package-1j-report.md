@@ -1,0 +1,56 @@
+# Work Package 1J — Live Meetup connector
+
+**Status: IMPLEMENTED; revised WP1J acceptance passed.** Meetup LIVE publishing is available only when explicitly enabled by server configuration and the configured account is ready. New destination plans continue to default to SIMULATED. No real Meetup writes were made during implementation or acceptance.
+
+## Implementation and configuration
+
+1. **Baseline and Eventbrite report.** Started from the clean `949573ed5f74644dd47477d0de92ab9062b86055` baseline. There was no separate uncommitted Eventbrite report change to split out. Eventbrite behavior was left intact; the platform matrix was corrected to reflect its already accepted adapter and still-unverified account access.
+2. **Authentication.** V1 uses the server-to-server JWT owner flow, signed RS256 with `iss` set to the OAuth client key, `sub` to the configured authorized member, `aud` to `api.meetup.com`, a 120-second assertion lifetime, and the registered key ID in `kid`. Interactive OAuth Server Flow is deferred.
+3. **JWT provider.** A `MeetupCredentialProvider` boundary isolates assertion signing and token exchange. Temporary access tokens are cached in memory only; key material, assertions, and tokens are never returned or logged.
+4. **Configuration.** Server-only settings cover execution mode, client key, authorized member ID, signing-key ID, absolute private-key path outside the repository, Pro Network URL name, and Group URL name. The default mode is SIMULATED. Credentials alone do not enable LIVE. No dependencies were added.
+5. **Readiness.** The authenticated settings check verifies token exchange, `self.id`, the configured Network, the configured Group, active status where available, and the Group-to-Network relationship. Settings reports connector/account readiness separately from campaign-specific graphic capability.
+6. **Pro Network and Group.** A new LIVE plan freezes the selected Network and Group URL names and an account fingerprint. Execution rechecks those exact approved targets. It blocks on account or target mismatch; configuration drift never redirects an old Approval.
+7. **Destination-plan integration.** The connector uses the accepted mixed-mode Approval model. The backend supplies target context and derives LIVE/SIMULATED; the browser cannot set execution mode. The CampaignVersion hash remains independent of the destination plan. Graphic-specific validation occurs in LIVE adapter preflight before a mutation.
+
+## GraphQL and approved content
+
+8. **GraphQL client.** A dedicated client sends authenticated POST requests to `https://api.meetup.com/gql-ext`, uses operation variables for all user/provider values, has bounded timeouts, disables redirects, parses JSON safely, and does not expose raw provider errors.
+9. **Operations.** Named, version-controlled queries/mutations cover self, Network, Group and venue readiness, exact Event read, Event create, and Event edit. No photo placeholder mutation is issued. The fake provider checks operation names and variables and rejects unexpected operations.
+10. **Renderer.** The deterministic renderer uses the exact approved plan entry and its approved Meetup description, Event facts, target, and graphic identity. It performs only HTML escaping/paragraph formatting, title/description limit checks, timezone conversion, and duration conversion. It does not use AI or rewrite content.
+11. **Event-type support.** The current safe subset is free, in-person Events only. Paid, virtual, and hybrid Events block rather than receiving invented payment, meeting-link, or type values. No artificial capacity is supplied.
+12. **Time and duration.** Start/end and timezone are required. Duration is computed from the approved start/end facts. The API-specific representation is deterministic: CreateEvent receives ISO-8601 duration and EditEvent receives milliseconds. Missing or invalid timing blocks before mutation.
+13. **Venue behavior.** The connector selects exactly one existing venue from the approved Group only when name and address components match conservatively. It does not create venues or fuzzy-match by venue name. Missing, ambiguous, or weak matches block before mutation.
+14. **Photo capability.** **UNVERIFIED / DEFERRED.** The official guide describes `createGroupEventPhoto` and its returned `uploadUrl`, but does not specify the binary upload method, body encoding, or headers. The connector does not guess and does not create orphan placeholders. A CampaignVersion with no graphic may proceed; a CampaignVersion with an approved graphic blocks before any Meetup mutation. Settings still reports account readiness independently and notes that live image upload awaits verification.
+
+## Resource lifecycle and safety
+
+15. **Resource binding.** The existing generic `DestinationResourceBinding` is reused; no migration or Meetup-specific table was needed. A verified Meetup Event ID is bound to the local Event, destination, account fingerprint, and approved Group. The existing uniqueness constraints prevent a remote identity from being claimed by unrelated local Events.
+16. **Create.** The first approved graphic-less execution checks the approved target, account, Group, venue, and Event facts, then creates one DRAFT with `selfRsvp: false`. A returned ID is persisted immediately. Title-based discovery is never used.
+17. **Update.** A later approved CampaignVersion updates the bound Event ID instead of creating another Event. An Event bound to a different Group, an unsupported remote state, or a missing bound Event blocks; the connector does not move or replace it.
+18. **Publish.** After exact draft readback matches approved title, description, date/time, duration, Group, type, and venue, the connector publishes through the documented edit operation. It does not announce, message members, or broadcast to other Groups.
+19. **Verification.** After publish, the connector reads the exact Event ID again. `SUCCESS` requires matching approved content and target, an active/published state, and a URL whose host, Group path, and Event ID are verified. A mutation response by itself is not success.
+20. **Idempotency.** Stable destination execution identity and the resource binding prevent duplicate creates. SUCCESS is not repeated; IN_PROGRESS is not dispatched twice; a confirmed retryable failure may be explicitly retried using the same Approval, mode, target, and bound Event ID.
+21. **UNKNOWN and reconciliation.** Ambiguous create/update/publish outcomes become UNKNOWN and cannot be blindly retried. If an ID is known, verification reads that exact ID. If create may have succeeded but no ID was received, the connector does not search by title/date and leaves the result unresolved for operator handling.
+22. **Retry.** Retries are destination-local and use the immutable approved runtime mode and target. They do not rerun Eventbrite or sibling destinations. Config changes cannot silently turn an approved LIVE execution into SIMULATED.
+23. **Rate limits.** Meetup rate-limit errors map to the existing retryable rate-limit category. There are no aggressive automatic retry loops; explicit retry remains bounded by existing execution rules.
+24. **Settings and execution UI.** Settings shows Meetup connection, account, Network/Group readiness, sanitized reasons, and the separate photo-upload note without secrets or raw payloads. Execution cards distinguish verified LIVE results, blocked/uncertain results, and simulated sibling destinations.
+
+## Validation and review
+
+25. **Backend tests.** `backend/.venv/Scripts/python.exe -m pytest -q`: **217 passed**. Coverage includes JWT claims/owner match, readiness and target drift, API/GraphQL errors, duration/timezone, venue matching, graphic blocking before mutation, fake LIVE create/update, resource binding, UNKNOWN, reconciliation, retry, no-network simulation, and prior application regressions.
+26. **Frontend tests.** `npm test`: **48 passed** across 5 test files.
+27. **Playwright.** `npm run test:e2e`: **40 passed** on desktop and iPhone-sized mobile projects. Meetup flows cover create/publish/verification, update of the same Event, UNKNOWN, no-write graphic blocking, config drift, and coexistence with Eventbrite LIVE plus simulated/manual destinations.
+28. **Migrations.** No migration was required. The backend suite's empty-database migration test passed through full upgrade, repeated upgrade, downgrade to base, and re-upgrade.
+29. **Read-only live smoke.** **DEFERRED.** The smoke tool ran and found the Meetup client key, member ID, signing-key ID, private-key path, Network, and Group configuration absent. It made no provider request.
+30. **Live draft-write test.** **NOT RUN.** The explicit write and verified-cleanup opt-ins were set off for the gate check. No Meetup mutation or publish was attempted.
+31. **Security review.** Secrets remain server-side; the private key must live outside the repository; GraphQL uses variables; redirects are disabled; provider errors are sanitized; the browser cannot change execution mode; test credentials are synthetic. Source-integrity validation passed, and the supplied Event Marketing originals remain unchanged.
+32. **Files created or modified.** `.env.example`, `README.md`, `backend/app/config.py`, `backend/app/execution_service.py`, `backend/app/main.py`, `backend/app/meetup.py`, `backend/app/settings_routes.py`, `backend/app/simulated_connectors.py`, `backend/scripts/meetup_smoke.py`, `backend/scripts/meetup_draft_write_test.py`, `backend/tests/browser_server.py`, `backend/tests/meetup_fake.py`, `backend/tests/test_meetup_live.py`, `docs/meetup-live-connector.md`, `docs/platform-capability-matrix.md`, `docs/work-package-1j-report.md`, `frontend/e2e/campaign-eventbrite-live.spec.ts`, `frontend/e2e/campaign-meetup-live.spec.ts`, `frontend/src/api.generated.ts`, `frontend/src/campaigns.tsx`, `frontend/src/settings.test.tsx`, and `frontend/src/settings.tsx`.
+33. **Dependencies.** None added. The existing `joserfc` dependency provides RS256 signing/JWT handling.
+34. **Architecture conflicts.** None found. The accepted mixed-mode Approval, per-destination runtime mode, immutable resource identity, and photo deferral were preserved.
+35. **Deferred functionality.** Photo binary upload is reserved for WP1J-P after the upload transport contract is verified. Account ownership/access and live API behavior remain unverified without the operator-authorized configuration. Paid, virtual, and hybrid Meetup Events, Event announcements, cross-Group operations, OAuth Server Flow, and all other new live connectors remain out of scope.
+
+## Final checks and commit
+
+36. **Frontend quality.** API type generation, Prettier check, ESLint/TypeScript lint, unit tests, and production build passed.
+37. **Python quality and dependencies.** Ruff lint and format check passed. `npm audit --audit-level=moderate` found **0 vulnerabilities**; `uv tool run --from pip-audit pip-audit backend --strict` found **no known vulnerabilities**.
+38. **Repository integrity.** `git diff --check`, changed-file secret scan, and source-integrity validation passed. No originals, credentials, or unrelated application features were changed. Final commit and working-tree state are reported by the WP1J handoff.

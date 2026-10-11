@@ -1,0 +1,41 @@
+# Event fact extraction
+
+WP1C adds a replaceable extraction provider to the existing Event intake. Extraction proposes candidate facts; backend code validates them; the operator reviews and accepts them through the existing WP1B flow. The extractor cannot write Event fields, resolve conflicts, choose required fields, or set readiness. Campaign content generation and every publishing operation remain out of scope.
+
+## Configuration and modes
+
+`EMP_EXTRACTION_MODE=fake` selects the small deterministic text demo used by local development and existing tests. It does not call a provider; it cannot read image or PDF bytes, so those files stay preserved and are reported as unreadable in this mode. `EMP_EXTRACTION_MODE=openai` selects the Responses adapter. Production configuration rejects fake mode and requires a non-empty server-side `OPENAI_API_KEY`. `OPENAI_EXTRACTION_MODEL` selects the model and defaults to `gpt-6-luna`; no model ID is scattered through Event logic. Model fallback/escalation is not automatic. Low-confidence, missing, or conflicting facts return to clarification.
+
+The API key is a `SecretStr` server setting. It is never returned to the browser, copied into a prompt, written to the database, or logged. `.env.example` contains a blank value only. Automated tests use a synthetic key with a mocked HTTP transport. No live credential is configured by this package.
+
+## Provider request and output
+
+The backend makes one bounded Responses API call for each new source record. SDK-level retries are disabled; the adapter uses a finite timeout, `store=false`, no tools, no web/file search, and low reasoning effort. A user-triggered retry is a new persisted attempt. It does not rerun already successful source records.
+
+Pasted text and TXT/MD contents are sent as one JSON-encoded `source_material` string. The only other input is the versioned application instruction and strict output schema. Supported JPEG/PNG/WebP bytes use request-scoped inline image data; validated PDF bytes use request-scoped inline file data with a generic filename. Neither path calls the provider Files API or creates a provider file ID. The uploaded original remains unchanged in private Event Marketing storage. Provider response storage is disabled; this setting does not by itself establish account-level abuse-monitoring retention or contractual data handling.
+
+Only these existing proposal paths are eligible: `title`, `schedule`, `timezone`, `delivery`, `facts.location.venue`, `facts.location.address`, `facts.location.join_url`, `facts.location.join_instructions`, `facts.people.host`, `facts.family_label`, `facts.topic`, `facts.registration.price_kind`, and `facts.registration.strategy`. The JSON Schema requires all fields, rejects extra keys, limits output to 30 proposals, constrains confidence to `HIGH`, `MEDIUM`, or `LOW`, and allows either a string or the narrow local-schedule object as candidate value. The backend then independently checks the field-path allowlist, types, title/string limits, supported delivery/registration values, IANA zones, HTTPS URLs, and schedule structure. Bad model structure fails the attempt; individual semantically invalid candidate values are dropped before they reach Event review.
+
+The prompt is versioned as `event-facts-v1`; the output schema is version 1. It requests short supporting excerpts and an optional concise uncertainty note. It does not request or persist chain-of-thought, arbitrary analysis, marketing prose, hidden reasoning, or full provider response bodies. Coarse confidence is advisory: only a high-confidence proposal without an uncertainty note can follow the existing lower-friction acceptance path; other proposals require focused confirmation. Confidence never establishes truth or readiness.
+
+## Untrusted input and privacy boundary
+
+The application instructions are sent in the Responses `instructions` field. Text is separately JSON encoded in the user input; an uploaded PDF or image is a distinct input item. Source contents are explicitly treated as untrusted data, including any text that says to ignore rules, change a venue, set a price, reveal secrets, or publish. There are no tools attached to the model request. The provider receives only the single source being processed; it does not receive unrelated Events, the Facebook Group Master, other reference files, Event/user/session IDs, authentication details, app secrets, or platform credentials.
+
+This is defense in depth, not proof that a model can never misread adversarial content. Strict schema parsing, backend field/value validation, no model-to-database write path, explicit human review, and existing source conflict handling remain the permission and truth boundaries. A fabricated-but-schema-valid candidate may still need the operator to reject it; model confidence and evidence excerpts are not independent verification.
+
+Application uploads remain limited by [the reviewed source policy](source-material.md): UTF-8 TXT/MD, JPEG/PNG/WebP, and bounded PDF. DOCX/Office files are not accepted; WP1C does not broaden that policy or add a document-processing framework. URLs are not fetched. User filenames are not sent to OpenAI; generated generic filenames are used for PDFs.
+
+## Attempts, failure, and retry
+
+The existing `source_materials.extraction` JSONB holds a bounded history (the latest 20 attempts plus a pruned count), so no attempt-only table or migration is needed. Each entry records attempt ID, owning Event/source IDs, extractor type, configured model ID where applicable, prompt/schema version, start/end time, duration, outcome, provider response ID on success, and safe error category/retryability on failure. The original bytes/text, raw response, request headers, secret, and hidden reasoning are not copied there.
+
+Attempt start is committed before provider I/O. The provider call runs outside a database transaction; success or a safe failure is saved afterward. Timeouts, rate limits and provider unavailability are retryable with an explicit user action. A still-running attempt becomes retryable after three minutes; the next user retry marks it interrupted before starting a successor. Invalid output, refusal, local source-integrity failure, unsupported input, bad credentials and other non-transient errors are not blindly retried. No expected extraction failure deletes a source or invents facts. The Event remains manually editable and clarifications remain available. A retry supersedes that source's earlier still-pending proposals and adds the new proposals to the ordinary review set; accepted facts and prior proposal outcomes stay intact. It never directly changes accepted facts. Existing date/fact conflicts are still resolved by the WP1B conflict path.
+
+## Cost and activation boundary
+
+There is one source per request, a bounded source/file policy, a maximum of 30 proposals, a 3,000-token output limit, a finite timeout, and no hidden call loop or automatic Sol escalation. Image detail is high to read flyer text; cost is bounded by the existing 10 MiB/25 megapixel image policy. PDF processing is bounded by the existing 20 MiB/50-page policy.
+
+No API key was available in the local environment during WP1C; live smoke verification is deferred. Before live client material is processed, the operator must verify the applicable OpenAI account's data-processing/retention terms and deliberately configure the key/model. `store=false` and request-scoped file inputs reduce application/provider file lifecycle state but are not a substitute for that account-level review.
+
+Current provider behavior is implemented against the official [Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), [file inputs](https://developers.openai.com/api/docs/guides/file-inputs), [image inputs](https://developers.openai.com/api/docs/guides/images-vision), and the [GPT-6 Luna model](https://developers.openai.com/api/docs/models/gpt-6-luna). Event Marketing credentials, account retention settings, production permissions, and real source processing were not tested.

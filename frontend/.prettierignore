@@ -1,0 +1,6 @@
+dist
+node_modules
+test-results
+playwright-report
+src/api.generated.ts
+package-lock.json

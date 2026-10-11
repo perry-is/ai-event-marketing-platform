@@ -1,0 +1,45 @@
+# Work Package 1B — Event Intake and Clarification
+
+**Status: WP1B COMPLETE / ACCEPTED.** The required PostgreSQL, backend, frontend, browser, source-integrity, and dependency checks passed. This package adds the first Event workflow on top of the accepted WP1A foundation. It does not add campaign generation, approval, destination execution, real AI, or publishing.
+
+## Implementation
+
+The new `events` table stores mutable canonical Event facts and a fact revision. The `source_materials` table keeps each original text/file separate from those facts, with a content hash, size, input method, processing status, extraction proposal record, and uploader/time. Migration `0002_event_intake` follows the WP1A migration and creates both tables, their checks, foreign keys, and query indexes. The full chain applies to an empty PostgreSQL database; no future campaign/group tables were added.
+
+The Event representation follows the reviewed WP0C model: title, local schedule plus IANA time zone, UTC start/end instants when resolvable, delivery, and bounded structured facts for location, people, registration, topic, and content facts. Event drafts may be incomplete. Current canonical readiness requires a title, date/start/time zone, and delivery; in-person/hybrid Events also need a venue/address, and virtual/hybrid Events need a usable join or registration strategy. These checks remain contextual and independent of destination requirements.
+
+An accepted canonical fact change advances `revision` once per command. Each accepted path carries source IDs where applicable, accepting user, timestamp, and note. A source revision is not created for an unaccepted proposal. Corrections and clarification answers use the expected Event revision and return a conflict on stale input. No campaign invalidation logic was introduced.
+
+Text/pasted input is stored exactly in PostgreSQL text with UTF-8 byte count and SHA-256. Uploaded files are preserved byte-for-byte in private local storage under an opaque server-generated key; the original filename is only sanitized display/download metadata. Authenticated downloads are served as attachments and the storage directory is never exposed. Supported files are UTF-8 TXT/MD, PDF, JPEG, PNG, and WebP. Per-file limits are 2 MiB for text, 20 MiB for PDF, 10 MiB for images, 50 PDF pages, 25 megapixels, and 100 MiB total per Event. PDF/image inputs are parser-checked and stored, but OCR/text extraction for them is not enabled yet. TXT/MD uploads may be passed to the deterministic extractor. URL intake performs no fetch.
+
+The extraction boundary is an `ExtractionService` protocol. Its visibly named `DeterministicDemoExtractor` recognizes a narrow fixture-like subset of event title, schedule, time zone, delivery, and venue phrases; it is not production NLP. Output is rechecked against a backend field/type allowlist. The extractor cannot write canonical facts. The operator reviews the concise proposal summary and chooses “Use these details”; low-confidence values and conflicting sources remain unresolved. Accepted values record provenance. Original source bytes/text are not changed.
+
+Clarification is represented within the Event’s bounded intake JSON as the reviewed model prescribes, rather than adding extraction/chat tables. Deterministic rules create ordered `MISSING`, `CONFLICT`, `INVALID`, or `CONFIRMATION_REQUIRED` items, with at most three open questions at a time. Answers are validated on the backend, recorded with resolution actor/time/answer, applied atomically, and followed by readiness recomputation. Missing timezone, delivery, and conditional physical/virtual attendance details are not silently defaulted. The UI offers focused corrections for title, schedule, time zone, delivery, and venue.
+
+## API and interface
+
+Authenticated endpoints provide `GET /api/events`, `POST /api/events`, `GET /api/events/{event_id}`, `POST /api/events/{event_id}/sources`, `GET /api/events/{event_id}/sources/{source_id}/download`, `POST /api/events/{event_id}/accept-proposals`, `PATCH /api/events/{event_id}/facts`, and `POST /api/events/{event_id}/clarifications/{question_id}`. All writes retain WP1A same-origin and CSRF enforcement. Event/source access rejects anonymous sessions. Error responses use stable safe codes and do not return stack traces or filesystem paths.
+
+The private “New Event” page accepts notes and supported files. Event details show the proposed facts, a clean canonical summary, unresolved questions, source status, and readiness. Events has a compact list and each item reopens the saved summary. Groups and Settings remain placeholders. No JSON/database editor, campaign copy, publishing controls, public source URLs, or fake dashboards were added.
+
+## Verification
+
+The final PostgreSQL-backed backend suite passed **58/58 tests**. It includes migration-from-empty/repeat/downgrade, auth boundaries, exact source preservation, supported TXT/PDF/image uploads, unsupported/mismatched/oversized file rejection, safe path/name handling, fake proposal extraction, no implicit canonical writes, conflict preservation/resolution, invalid and valid clarification answers, revision guards, conditional clarification retirement after delivery changes, readiness, and authenticated Event/source access. The migration test created a disposable empty PostgreSQL database, applied the full chain, repeated upgrade, downgraded to base, and reapplied head successfully.
+
+Frontend unit tests passed **12/12**. They cover the intake input/CSRF request, file rejection messaging, proposal/clarification display and response, summary correction, Events list, and existing authentication behavior. Frontend lint/type checks, production build, API type generation, and Prettier checks passed.
+
+Playwright passed **4/4** checks across desktop Chrome and an iPhone-sized viewport. The end-to-end path used the test-only OIDC provider and a disposable PostgreSQL database: anonymous API rejection; sign-in; create from synthetic notes; review proposed facts; answer the missing delivery question; observe readiness; return to the list; reopen persisted facts; and check no horizontal overflow. The protected-shell/logout test also passed. Readiness is checked by backend integration tests against PostgreSQL. Screenshots were visually reviewed. Live Google login remains **deferred** because provider credentials are intentionally not configured.
+
+Python dependencies added: Pillow 12.3.0 for allowlisted image verification/dimension limits; pypdf 6.19.0 for strict bounded PDF validation; and python-multipart 0.0.32 for FastAPI multipart intake. No frontend dependency was added. Final checks passed: backend 58/58; frontend unit tests 12/12; Playwright 4/4; Ruff lint and formatting; Prettier, ESLint/TypeScript, generated API types, and production build; empty-database migration cycle; `npm audit` (zero vulnerabilities); `pip-audit` for the declared runtime/test dependency set (no known vulnerabilities); local Python environment audit after updating its ignored pip/setuptools tooling (no known vulnerabilities); `git diff --check`; and the source-integrity validator. Live Google OIDC remains intentionally deferred.
+
+## Security and scope
+
+User content is treated as untrusted. Accepted extensions, declared media type, file signature/UTF-8, and bounded parser checks are applied; unsupported formats and traversal-style input names are rejected or neutralized. Storage paths are generated by the server, validated against a strict key pattern, written atomically, kept outside frontend public directories, and not returned to the client. Uploaded files are never executed or fetched. The deterministic extractor only emits allowlisted proposed facts. Cookie-session authorization and CSRF/origin protections remain enforced by the backend.
+
+No architecture conflict was found. PDF/image OCR, real model extraction, campaigns and versions, generated marketing content, approval, destination readiness, group recommendations, audit-event infrastructure, and all publishing/connectors remain deferred. The operator’s live Drive and all original Event Marketing reference materials remain out of scope and unchanged.
+
+## Files added or modified
+
+- `.gitignore`, `README.md`, `docs/work-package-1b-report.md`
+- Backend: `backend/app/auth.py`, `backend/app/config.py`, `backend/app/event_routes.py`, `backend/app/event_service.py`, `backend/app/extraction.py`, `backend/app/file_storage.py`, `backend/app/main.py`, `backend/app/models.py`, `backend/app/routes.py`, `backend/migrations/versions/0002_event_intake.py`, `backend/pyproject.toml`, `backend/tests/conftest.py`, `backend/tests/test_config.py`, `backend/tests/test_event_intake.py`, `backend/tests/test_foundation.py`
+- Frontend: `frontend/e2e/event-intake.spec.ts`, `frontend/e2e/foundation.spec.ts`, `frontend/src/App.module.css`, `frontend/src/App.test.tsx`, `frontend/src/App.tsx`, `frontend/src/api.generated.ts`, `frontend/src/events.test.tsx`, `frontend/src/events.tsx`

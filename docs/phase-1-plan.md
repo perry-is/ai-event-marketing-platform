@@ -1,0 +1,39 @@
+# Phase 1: authenticated workflow with simulated distribution
+
+WP0B plan with WP0C boundary corrections; implementation begins only after Architect reviews the [core contract](architecture.md) and [WP0C report](work-package-0c-report.md). Goal: an authorized user can click through the whole product flow, revise/approve an actual review snapshot, simulate independent destination results, receive finished manual packages and see durable history. Architecture/security rules are real; publishing and AI production providers are simulated. “Fake approval” is explicitly rejected: it is deterministic approval of a SIMULATED snapshot.
+
+## Vertical work packages (review before individual implementation prompts)
+
+| Order | Vertical slice | Demonstrable result / acceptance |
+| --- | --- | --- |
+| P1-A | Private app shell, identity/session, PostgreSQL schema/migrations, minimal private storage and audit plumbing. | Nonunique Event-to-Campaign FK with V1 primary-creation guard; login/logout and authorized Event draft survive reload; unauthorized reads/writes/downloads fail. Responsive navigation, simulation label. Seeded single allowlisted identity; no public registration. |
+| P1-B | Intake, secure sources, fake extraction, fact confirmation and necessary clarification. | Paste rough info or safe image/PDF, original preserved, proposed facts visible; accept supported facts and resolve one conflict without overwriting accepted values. Code detects conditional canonical/destination gaps; fake AI phrases questions; non-material internal notes remain outside generation intent. Operator imports supplied Group Master with raw provenance; isolated sanitized test fixtures. |
+| P1-C | Campaign assembly, fake copy/creative, group filtering/advisory ranking/human selection, immutable snapshots and review/revision. | Actual per-destination copy and a safe sample graphic/manual package preview. “Make LinkedIn warmer” creates successor without fact mutation. Asset/hash/target consistency and stale-generation checks pass. Review business-significant platform renderings and show local validation, mode/readiness and explicit exclusions before approval. Pin material fact dependencies. One limited registration-output binding may be demonstrated with fake producer if selected; no generic pipeline engine. |
+| P1-D | Exact simulated approval, independent fake execution/manual packages, safe retry/reconciliation and history. | Commit exact snapshot approval separately from idempotent execution start; prove crash/failure between them resumes without reapproval. AUTO fake destinations succeed/fail/timeout independently; LinkedIn-only retry never republishes Instagram; Groups remain manual. Unknown-after-create reconciles safely. Material Event edits withdraw affected authority; unrelated notes preserve it. Complete only with no unresolved required action, including explicit manual handoff/failed dispositions; UNKNOWN requires reconciliation or explicit risk-acknowledged abandonment. Preserve honest outcome summary. Full invariant/E2E acceptance. |
+
+Each package adds a working path rather than separate “backend then frontend” work. Later packages use the same persistence/approval contract; no scaffolding that must be replaced to obtain protection. Architect may split P1-C/D only for reviewable size while preserving their acceptance semantics. Do not issue implementation prompts in WP0C.
+
+## Phase 1 inclusion and exclusions
+
+Include authentication/session enforcement, schema/constraints/migrations, upload controls, canonical draft/accepted facts, real clarification UI, immutable snapshots/manifests, exact approvals, fake normalized adapters, per-target attempts/dispositions/history and manual group checklist. Typed commands must apply authorization/CAS; no freely writable status field. Basic conversational revision can use a deterministic fake intent parser and explicit confirmation for fact changes; it must not silently authorize protected state.
+
+Fake extraction/generation should be useful enough to exercise the flow: structured proposals, one/few necessary gaps, distinguish fact edit from tone change, safe representative copy and synthetic graphic. No polished live AI campaign/image generation, paid model calls, production secrets, live Drive access, real third-party publishing, platform OAuth, scraping, recurring scheduler, universal templates, group learning, complex editor or complete mobile visual polish. Platform capability limitations stay visible without a giant technical settings flow.
+
+App-login OIDC is in scope once Architect accepts authentication; publishing-account OAuth remains excluded. A loopback-only test identity can support local fixture runs; it cannot be used in a deployed demo. No deployment in this architecture package; deploying Phase 1 later requires separate authorized scope and real app access protection.
+
+## Short client confirmations
+
+These are **NEEDS_CLIENT_CONFIRMATION**, prioritized before real business campaigns; use conservative synthetic scenarios for Phase 1 until answered. Do not ask the operator about PostgreSQL, schemas, parsers or field counts.
+
+1. Which destinations should a normal campaign offer, and where should registration happen (existing link or a selected listing platform)? Which LinkedIn identity should it use: organization, personal, or both? Portal remains provisional; Facebook Page stays excluded. This decides routing/CTA behavior, not technical API support.
+2. For dates/times missing a timezone, should the app suggest an Event Marketing home timezone for confirmation? Ask for the intended location/convention, not to validate MST/EST mechanically. Never assume a standard end time/venue; ask only when selected content needs it.
+3. Should approval immediately begin distribution to the destinations shown, or should the operator start distribution separately? Proposed behavior is immediate start. Material changes always require a fresh approval; that safety rule is fixed. If something already posted must change, is a separately reviewed correction/new post the desired V1 workflow? No silent editing/deletion is promised.
+4. Is the supplied Group Master the working reference, and what event-promotion restrictions or recurring group choices should guide manual selection? Resolve only conflicts on groups she actually selects, presenting existing values/links. Source admin statuses/unnamed columns do not need a catalog-wide client interview.
+
+There is no question to locate an Events Master or confirm 56/26 claims. Brand assets/partner permissions are a targeted live-creative readiness item; use synthetic/REFERENCE_ONLY assets in Phase 1. No recurring-default/template question is blocking until the operator asks for a reusable preset; any such preset needs explicit confirmed values. Client answers should be recorded as new requirement evidence, not silently overwrite the dated source audits.
+
+## Architect review gates and success
+
+Accept/revise: one occurrence per Event, Event-to-many-Campaign persistence with one active primary exposed in V1; append-only snapshots; exact mode-bound approval; per-target keys/attempts; separate approval/start transactions and deterministic material invalidation; UNKNOWN accounting and honest COMPLETE semantics; canonical plus selected-destination validation; execution kind separate from integration readiness; curated row-based Groups; private upload/session design; fifteen focused tables. Authentication-account availability is an operator prerequisite; confirmed client facts and live platform access are not silently assumed.
+
+Phase 1 exits only when an authenticated user completes P1-A→D, required tests in [test strategy](test-strategy.md) pass, and all live publishing is disabled. Outputs are a reviewed simulated campaign/history, not published events. No production connector activation or Phase 2 assumptions are bundled into acceptance.
